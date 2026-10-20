@@ -91,7 +91,7 @@ en:{canvas:"Canvas",add:"Add",selected:"Selected",layers:"Layers",export_:"Expor
  text:"Text",font:"Font",fsize:"Size",color:"Color",bold:"Bold",align:"Align",opacity:"Opacity",stroke:"Outline",strokeW:"Width",curve:"Curve",
  fill:"Fill",filter:"Filter",fNone:"None",fGray:"B&W",fSepia:"Sepia",fVivid:"Vivid",fCool:"Cool",fWarm:"Warm",
  shadow:"Shadow",shBlur:"Blur",dup:"Duplicate",del:"Delete",fwd:"Forward",bwd:"Backward",front:"To front",back:"To back",
- lock:"Lock",hide:"Hide",png:"PNG",jpg:"JPG",
+ lock:"Lock",hide:"Hide",png:"PNG",jpg:"JPG",hd:"HD 2× PNG · Pro",proT:"Pro feature",proBody:"HD export is an OpenX Pro feature. Enter your Pro key once — it unlocks all Mo tools.",unlock:"Unlock",getKey:"Get a Pro key →",badKey:"That key is not valid",badFmt:"Invalid key format",checking:"Verifying…",needNet:"Verification needs a connection — check your network",
  tip:"Tip: drag to move · corners to resize · top dot to rotate · shift-click multi-select · Ctrl+C/V copy.",
  saved:"Exported",noSel:"Nothing selected",multi:"selected",white:"White",silver:"Silver",black:"Black",
  undo:"Undo",redo:"Redo",clear:"Clear all",confirmClear:"Clear the whole canvas?",
@@ -103,7 +103,7 @@ zh:{canvas:"畫布",add:"新增",selected:"已選取",layers:"圖層",export_:"�
  text:"文字內容",font:"字體",fsize:"字級",color:"顏色",bold:"粗體",align:"對齊",opacity:"不透明度",stroke:"描邊",strokeW:"粗幼",curve:"弧度",
  fill:"填色",filter:"濾鏡",fNone:"原圖",fGray:"黑白",fSepia:"懷舊",fVivid:"鮮艷",fCool:"冷調",fWarm:"暖調",
  shadow:"陰影",shBlur:"模糊",dup:"複製",del:"刪除",fwd:"上移一層",bwd:"下移一層",front:"置頂",back:"置底",
- lock:"鎖定",hide:"隱藏",png:"PNG",jpg:"JPG",
+ lock:"鎖定",hide:"隱藏",png:"PNG",jpg:"JPG",hd:"高清 2× PNG · Pro",proT:"Pro 功能",proBody:"高清匯出係 OpenX Pro 功能。輸入一次 Pro key，全部 Mo 工具一齊解鎖。",unlock:"解鎖",getKey:"攞 Pro key →",badKey:"條 key 唔啱",badFmt:"Key 格式唔啱",checking:"驗證中…",needNet:"驗證要連線，請檢查網絡",
  tip:"提示：拖曳移動 · 角落縮放 · 頂點旋轉 · Shift 多選 · Ctrl+C/V 複製。",
  saved:"已匯出",noSel:"未選取物件",multi:"個已選",white:"白",silver:"淺銀灰",black:"黑",
  undo:"還原",redo:"重做",clear:"清空",confirmClear:"清空成個畫布？",
@@ -211,8 +211,9 @@ function drawObj(o){
   ctx.drawImage(o.img,-o.w/2,-o.h/2,o.w,o.h);ctx.filter="none";}
  ctx.restore();
 }
+let EXP=1; // export scale (2 = HD, Pro)
 function draw(){
- cv.width=design.w;cv.height=design.h;
+ cv.width=design.w*EXP;cv.height=design.h*EXP;ctx.setTransform(EXP,0,0,EXP,0,0);
  if(design.bgType==="gradient"){
   const a=design.bgAngle*Math.PI/180;
   const x1=design.w/2-Math.cos(a)*design.w/2,y1=design.h/2-Math.sin(a)*design.h/2;
@@ -537,6 +538,7 @@ function renderDrawer(){
  h+=`<div class="sec"><h3>${T("export_")}</h3><div class="row">
   <button class="btn" id="expPng">${T("png")}</button>
   <button class="btn" id="expJpg">${T("jpg")}</button></div>
+  <div class="row"><button class="btn" id="expHd">${T("hd")}</button></div>
   <div class="empty">${T("tip")}</div></div>`;
  /* theme + lang */
  h+=`<div class="sec"><h3>${T("theme")}</h3><div class="theme3">
@@ -639,6 +641,7 @@ function renderDrawer(){
  /* export */
  $("expPng").onclick=()=>doExport("png");
  $("expJpg").onclick=()=>doExport("jpeg");
+ $("expHd").onclick=()=>doExportHD();
  /* theme/lang */
  b.querySelectorAll("[data-th]").forEach(x=>x.onclick=()=>{
   theme=x.dataset.th;localStorage.setItem("postermo-theme",theme);
@@ -646,6 +649,70 @@ function renderDrawer(){
  b.querySelectorAll("[data-lg]").forEach(x=>x.onclick=()=>{
   lang=x.dataset.lg;localStorage.setItem("postermo-lang",lang);renderDrawer();});
  applyZoom();
+}
+
+/* ---------- OpenX Pro gate ---------- */
+const PRO_API='https://openx-mo.vercel.app/api/pro/validate';
+const proFmt=k=>{const s=(k||'').trim();return /^OX1-[A-Z2-7]{8}-[A-Z2-7]{8}$/i.test(s)||/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);};
+async function proValidate(k){
+ const r=await fetch(PRO_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:(k||'').trim()})});
+ const j=await r.json();return !!j.valid;
+}
+async function proGate(next){
+ try{
+  if(localStorage.getItem('openx-pro-ok')==='1')return next();
+  const k=localStorage.getItem('openx-pro');
+  if(k&&proFmt(k)){
+   try{
+    if(await proValidate(k)){localStorage.setItem('openx-pro-ok','1');return next();}
+    localStorage.removeItem('openx-pro');
+   }catch(e){}
+  }
+ }catch(e){}
+ proModal(next);
+}
+function proModal(next){
+ let m=document.getElementById('proModal');
+ if(!m){
+  m=document.createElement('div');m.id='proModal';
+  m.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center;padding:20px';
+  m.innerHTML=`<div style="background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:22px;max-width:400px;width:92vw;position:relative;color:var(--fg)">
+   <button id="proClose" style="position:absolute;top:8px;right:12px;border:none;background:none;font-size:22px;cursor:pointer;color:var(--fg)">×</button>
+   <h3 style="margin:0 0 8px">${T("proT")}</h3>
+   <p style="margin:0 0 12px;font-size:13px;line-height:1.55">${T("proBody")}</p>
+   <input id="proKey" type="text" placeholder="Pro key" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-family:inherit;font-size:14px">
+   <div id="proMsg" style="font-size:12px;min-height:16px;margin:8px 0;color:#e11d48"></div>
+   <button class="btn" id="proUnlock" style="width:100%">${T("unlock")}</button>
+   <a href="https://buymeacoffee.com/whynotartmoney" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:10px;font-size:13px;color:var(--fg)">${T("getKey")}</a>
+  </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.style.display='none';});
+  document.getElementById('proClose').onclick=()=>{m.style.display='none';};
+  document.getElementById('proUnlock').onclick=async()=>{
+   const inp=document.getElementById('proKey'),msg=document.getElementById('proMsg');
+   const k=(inp.value||'').trim();
+   if(!proFmt(k)){msg.textContent=T("badFmt");return;}
+   msg.style.color='var(--fg)';msg.textContent=T("checking");
+   try{
+    if(await proValidate(k)){
+     localStorage.setItem('openx-pro',k);localStorage.setItem('openx-pro-ok','1');
+     m.style.display='none';next&&next();
+    }else{msg.style.color='#e11d48';msg.textContent=T("badKey");}
+   }catch(e){msg.style.color='#e11d48';msg.textContent=T("needNet");}
+  };
+ }
+ m.style.display='flex';
+}
+function doExportHD(){
+ proGate(()=>{
+  const keep=[...selIds];selIds=[];guides=[];
+  EXP=2;draw();
+  const a=document.createElement("a");
+  a.download="poster-mo-hd.png";
+  a.href=cv.toDataURL("image/png");
+  a.click();
+  EXP=1;selIds=keep;draw();toast(T("saved"));
+ });
 }
 
 function doExport(kind){
